@@ -1,0 +1,21 @@
+name:                landrover
+version:             1.0.0.0
+synopsis:            A tool for converting markdown files into reveal.js presentations.
+description:         A tool for converting markdown files into reveal.js presentations.
+license:             BSD3
+license-file:        LICENSE
+author:              fro_ozen
+maintainer:          fro_ozen@gmx.de
+category:            Web
+build-type:          Simple
+cabal-version:       >=1.10
+
+source-repository head
+  type:             git
+  location:         https://github.com/froozen/landrover.git
+
+executable landrover
+  main-is:             Main.hs
+  build-depends:       base >=4.8 && <4.9, directory >=1.2 && <1.3, pandoc >= 1.14,
+                       text >=1.2.1.1
+  default-language:    Haskell2010
