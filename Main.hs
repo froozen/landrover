@@ -1,67 +1,77 @@
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+
 module Main where
 
 import System.Environment (getArgs)
 import System.Directory (doesFileExist, doesDirectoryExist)
 import Data.List (isSuffixOf)
-import Control.Monad (liftM2)
+import Control.Monad (liftM2, void)
+import Control.Monad.Trans
+import Control.Monad.Trans.Maybe
 import Text.Pandoc (def, readMarkdown, writeHtmlString)
 import qualified Data.Text as T
 
+-- | The monad of landrover
+newtype LandroverM a = LandroverM {
+    unwrapL :: MaybeT IO a
+    }
+  deriving (Functor, Applicative, MonadIO)
+
+instance Monad LandroverM where
+    a >>= f = LandroverM (unwrapL a >>= unwrapL . f)
+    fail err = do
+        liftIO . putStrLn $ err
+        LandroverM . fail $ err
+
+-- | Run a LandroverM
+runLandroverM :: LandroverM a -> IO (Maybe a)
+runLandroverM = runMaybeT . unwrapL
+
 -- | Retrieve and validate the paths supplied via arguments
-getPaths :: IO (Maybe (FilePath, FilePath))
+getPaths :: LandroverM (FilePath, FilePath)
 getPaths = do
-    args <- getArgs
+    args <- liftIO getArgs
     case args of
-      markdown:presentation:_ -> do
-          markdownPath <- validateMarkdownPath markdown
-          presentationPath <- validatePresentationPath presentation
-          return . liftM2 (,) markdownPath $ presentationPath
-      _ -> do
-          putStrLn "Usage: landrover [markdown] [presentation]"
-          return Nothing
+      markdown:presentation:_ -> liftM2 (,)
+              (validateMarkdownPath markdown)
+              (validatePresentationPath presentation)
+      _ -> fail "Usage: landrover [markdown] [presentation]"
 
 -- | Validate the path to the markdown file by assuring it exists
-validateMarkdownPath :: FilePath -> IO (Maybe FilePath)
+validateMarkdownPath :: FilePath -> LandroverM FilePath
 validateMarkdownPath path = do
-    exists <- doesFileExist path
+    exists <- liftIO . doesFileExist $ path
     if exists
-       then return . Just $ path
-       else do
-           putStrLn $ "Can't find markdown at " ++ path
-           return Nothing
+       then return path
+       else fail $ "Can't find markdown at " ++ path
 
 -- | Validate the path to the presentation folder, checking wether it and
 --   the template file exist
-validatePresentationPath :: FilePath -> IO (Maybe FilePath)
+validatePresentationPath :: FilePath -> LandroverM FilePath
 validatePresentationPath path = do
     -- Make sure the path ends with a '/'
     let fixedPath = if "/" `isSuffixOf` path
         then path
         else path ++ "/"
 
-    presentationExists <- doesDirectoryExist fixedPath
+    presentationExists <- liftIO . doesDirectoryExist $ fixedPath
     if presentationExists
        then do
-           templateExists <- doesFileExist $ fixedPath ++ "template.html"
+           templateExists <- liftIO . doesFileExist $
+             fixedPath ++ "template.html"
            if templateExists
-              then return . Just $ fixedPath
-              else do
-                  putStrLn $
-                    "Can't find template at " ++ fixedPath ++ "template.html"
-                  return Nothing
-       else do
-           putStrLn $ "Can't find presentation in " ++ path
-           return Nothing
+              then return fixedPath
+              else fail $ "Can't find template at " ++
+                fixedPath ++ "template.html"
+       else fail $ "Can't find presentation in " ++ path
 
 -- | Try converting the markdown to html
-convertMarkdown :: FilePath -> IO (Maybe String)
+convertMarkdown :: FilePath -> LandroverM String
 convertMarkdown path = do
-    markdown <- readFile path
+    markdown <- liftIO . readFile $ path
     case readMarkdown def markdown of
-      Right pandoc -> return . Just . writeHtmlString def $ pandoc
-      Left err -> do
-          putStrLn $ "Error reading markdown: " ++ show err
-          return Nothing
+      Right pandoc -> return . writeHtmlString def $ pandoc
+      Left err -> fail $ "Error reading markdown: " ++ show err
 
 -- | Convert the html code into reveal.js slides
 slidifyHtml :: String -> T.Text
@@ -73,23 +83,17 @@ slidifyHtml html = foldr1 T.append sections
                           T.pack "</section>"
 
 -- | Insert the slides into the template and save it as index.html
-insertIntoTemplate :: FilePath -> T.Text -> IO ()
+insertIntoTemplate :: FilePath -> T.Text -> LandroverM ()
 insertIntoTemplate presentationPath insert = do
-    content <- readFile $ presentationPath ++ "template.html"
+    content <- liftIO . readFile $ presentationPath ++ "template.html"
     let template = T.pack content
         output = T.replace token insert template
-    writeFile (presentationPath ++ "index.html") . T.unpack $ output
+    liftIO . writeFile (presentationPath ++ "index.html") . T.unpack $ output
 
     where token = T.pack "<!-- SLIDES -->"
 
-main = do
-    paths <- getPaths
-    case paths of
-      Just (markdown, presentation) -> do
-          html <- convertMarkdown markdown
-          case html of
-            Just converted ->
-              let slides = slidifyHtml converted
-              in insertIntoTemplate presentation slides
-            _ -> return ()
-      _ -> return ()
+main = void .  runLandroverM $ do
+        (markdown, presentation) <- getPaths
+        html <- convertMarkdown markdown
+        let slides = slidifyHtml html
+        insertIntoTemplate presentation slides
