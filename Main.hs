@@ -76,10 +76,10 @@ convertMarkdown path = do
 -- | Convert the html code into reveal.js slides
 slidifyHtml :: String -> T.Text
 slidifyHtml html = foldr1 T.append sections
-    where sections = map sorround . T.splitOn hr $ packed
+    where sections = map surround . T.splitOn hr $ packed
           hr = T.pack "<hr />"
           packed = T.pack html
-          sorround text = T.pack "<section>" `T.append` text `T.append`
+          surround text = T.pack "<section>" `T.append` text `T.append`
                           T.pack "</section>"
 
 -- | Insert the slides into the template and save it as index.html
