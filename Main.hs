@@ -32,7 +32,7 @@ getPaths :: LandroverM (FilePath, FilePath)
 getPaths = do
     args <- liftIO getArgs
     case args of
-      markdown:presentation:_ -> liftM2 (,)
+      [markdown, presentation] -> liftM2 (,)
               (validateMarkdownPath markdown)
               (validatePresentationPath presentation)
       _ -> fail "Usage: landrover [markdown] [presentation]"
