@@ -1,4 +1,5 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 module Main where
 
@@ -76,11 +77,9 @@ convertMarkdown path = do
 -- | Convert the html code into reveal.js slides
 slidifyHtml :: String -> T.Text
 slidifyHtml html = foldr1 T.append sections
-    where sections = map surround . T.splitOn hr $ packed
-          hr = T.pack "<hr />"
+    where sections = map surround . T.splitOn "<hr />" $ packed
           packed = T.pack html
-          surround text = T.pack "<section>" `T.append` text `T.append`
-                          T.pack "</section>"
+          surround text = "<section>" `T.append` text `T.append` "</section>"
 
 -- | Insert the slides into the template and save it as index.html
 insertIntoTemplate :: FilePath -> T.Text -> LandroverM ()
@@ -90,7 +89,7 @@ insertIntoTemplate presentationPath insert = do
         output = T.replace token insert template
     liftIO . writeFile (presentationPath ++ "index.html") . T.unpack $ output
 
-    where token = T.pack "<!-- SLIDES -->"
+    where token = "<!-- SLIDES -->"
 
 main = void .  runLandroverM $ do
         (markdown, presentation) <- getPaths
